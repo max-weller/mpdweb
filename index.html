@@ -1,0 +1,212 @@
+<!doctype html>
+<html>
+  <head>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/jquery-1.10.2.min.js"></script>
+    <meta name="viewport" content="width=device-width, user-scalable=no, min-scale=1, max-scale=1">
+    <script>
+     var socket = io.connect(location.origin, {reconnectionDelayMax:5000});
+     var myRefresh = false;
+     var mpdStatus;
+     socket.on('news', function (data) {
+       if (data.refresh && myRefresh && data.refresh != myRefresh) location.reload();
+       myRefresh = data.refresh;
+     });
+     function conc(a,b,c) {
+       return (a?a:"") + (a&&c ? b : "") + (c?c:"");
+     }
+     var lastSong = -1;
+     socket.on('status', function(data) {
+       //console.log(data);
+       mpdStatus = data;
+       var song = data.currentsong;
+       
+       var outdata = "";
+       for(var k in data) outdata += k + ": " + data[k] + "; ";
+       outdata+="<br>";
+       for(var k in song) outdata += k + ": " + song[k] + "; ";
+       $("#status").html(outdata);
+       
+       if (data.state == "play") $("#playpause").html("Now playing: <span class=fn>"+(song.Title?song.file:"")+"</span>"); else if (data.state == "pause") $("#playpause").html("Paused"); else $("#playpause").html(data.state);
+       
+       $("#nowplaying").html(formatsong(song));
+       
+       var time = data.time.split(/:/);
+       $("#progress").css('width', (time[0] / time[1] * 100) + "%");
+       if (lastSong != data.songid) {
+         updatePlaylistHighlight();
+         lastSong = data.songid;
+       }
+     });
+     function formatsong(song) {
+       var firstline = "<strong>" + (song.title ? song.title : song.file) + "</strong>";
+       var secondline = conc(song.artist, " - ", song.album);
+       
+       return conc(firstline, "<br>", secondline);
+     }
+     socket.on('some error', onError);
+     socket.on('error', onError);
+     socket.on('connect_failed', onError);
+     socket.on('reconnect_failed', onError);
+     socket.on('reconnect_error', onError);
+     socket.on('reconnect', function() { $("#titlebar").css("background","transparent"); });
+     socket.on('connect', function() { $("#titlebar").css("background","transparent"); });
+     socket.on('disconnect', function() { $("#titlebar").css("background","rgba(255,0,0,0.7)"); });
+     socket.on('connect_failed', function() { $("#titlebar").css("background","rgba(255,0,0,0.7)"); });
+     socket.on('disconnect', onError);
+     
+     function onError() {
+       blink('rgba(255,100,100,0.5)');
+     }
+     socket.on('playlist info' , function(data) {
+       
+       var $pl = $("#playlist").html("");
+       for(var i in data) {
+         var line = data[i];
+         $pl.append("<div class=item data-song='"+line.pos+"' data-songid='"+line.id+"'>" + formatsong(line)  + "</div>");
+       }
+       updatePlaylistHighlight();
+     });
+     function updatePlaylistHighlight() {
+       $("#playlist .item").removeClass("current");
+       if(!mpdStatus) return;
+       var $el=$("#playlist .item[data-song="+mpdStatus.song+"]").addClass("current");
+       if ($el.length>0)$("#playlist").animate({scrollTop:$el[0].offsetTop-70});
+     }
+     function blink(color) {
+       $("#tab").css('backgroundColor', color);
+       setTimeout(function() { $("#tab").css('backgroundColor', "rgba(0,0,0,0)"); }, 1000);
+     }
+     $(function() {
+       $(".progressevent").on("mouseup mousedown touchup touchdown", function(e) {
+         var posf = e.offsetX / $(this).width();
+         console.log(posf);
+         socket.emit('seek', posf);
+         return false;
+       }).on("mousemove touchmove", function(e) {
+         if (e.type == "mousemove" && e.button == 0) return;
+         var posf = e.offsetX / $(this).width();
+         $("#progress").css("width", (posf*100) + "%");
+         return false;
+       });
+       $("[data-emit]").click(function() {
+         socket.emit(this.getAttribute("data-emit"));
+         autoHideControls1();
+       });
+       $(".nowplaying").click(function() {
+         $("#controls1").fadeIn();
+         autoHideControls1();
+       });
+       $("#controls1").fadeOut();
+       $("body").on("contextmenu", function() { return false });
+       //$("body").on("touchstart", function() { return false });
+       //$("body").on("touchmove", function() { return false });
+
+     });
+     var autoHideControls1Timer;
+     function autoHideControls1() {
+       if(autoHideControls1Timer) clearTimeout(autoHideControls1Timer);
+       autoHideControls1Timer = setTimeout(function() {
+         autoHideControls1Timer=null;
+         $("#controls1").fadeOut();
+       }, 10000);
+     }
+     
+     setInterval(function() {
+       var d=new Date(),m=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+       $("#clock").html(d.getDate()+". " + m[d.getMonth()]+" "+d.getFullYear());
+     });
+    </script>
+    <style type="text/css">
+     @import url(http://fonts.googleapis.com/css?family=Roboto+Slab:400,100,300,700);
+     html,body {
+       overflow: hidden; padding: 0; margin: 0; height: 100%;
+       font-family: 'Roboto Slab', serif;
+     }
+     body { -webkit-touch-callout: none !important; -webkit-user-select: none !important; }
+     #tab { transition: background-color 0.5s; -webkit-transition: background-color 0.5s; border-collapse: collapse; }
+     body { background: #55aadd url(/bg.jpg) no-repeat fixed; background-size:cover; }
+     #status { font-size: 60%; font-weight: 300; }
+     .progressevent { cursor: pointer; }
+     #progress { background: white; height: 20%; width: 0; transition: width 1s; -webkit-transition: width 1s; }
+     tr.nowplaying { font-size: 140%; text-shadow: 2px 2px 10px black; background-color: rgba(0,0,0,0.5);color:white }
+     tr.nowplaying span.fn { color: #ddf; font-weight: 300; }
+     #playpause { cursor:pointer; padding-top: 5px; }
+     #nowplaying { font-size: 215%; padding-bottom: 5px; line-height: 1.2; }
+     #nowplaying strong { font-weight: 800; font-size: 115%; }
+     #playlist { overflow: auto; height: 80%; }
+     #playlist .item { padding: 2px 2px 2px 30px; color: #ddf; background-position: 5px center; background-repeat: no-repeat; background-size: auto 1.5em; background-image: url(/icons/file_mp3.png); }
+     #playlist .item strong { color: white; font-size: 110%; }
+     #playlist .item.current { background-image: url(/icons/arrow_right.png); }
+     #controls1 { position: absolute; display: table; border-spacing: 15px; top: 40px; left: 0; width: 100%; height: 20%; }
+     div.control { display: table-cell; background-color: rgba(11,11,11,0.7); opacity: 0.9; box-shadow: 0 0 2px #333 inset; height: 128px; background-repeat: no-repeat; background-size: contain; background-position: center center; border:1px solid transparent; }
+     #svgclock { position: absolute; bottom: 10px; right: 10px; }
+     #clock { text-align: center; background: rgba(0,0,0,0.5); color: white; font-size: 140%; font-weight: bold; padding: 2px 0; }
+     h2 {
+       margin: 2% 10px 1%; display: table; width: 100%; border-spacing: 10px;
+     }
+     h2 a {
+       display: table-cell; font-size: 80%; font-weight: 300; letter-spacing: 0.1em; text-align: center; padding: 4px 15px; color: #222; text-decoration: none; border: 1px solid #ddd;
+       background: -moz-linear-gradient(top, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 100%); /* FF3.6+ */
+       background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,rgba(255,255,255,0.8)), color-stop(100%,rgba(255,255,255,0.2))); /* Chrome,Safari4+ */
+       background: -webkit-linear-gradient(top, rgba(255,255,255,0.8) 0%,rgba(255,255,255,0.2) 100%); /* Chrome10+,Safari5.1+ */
+       background: linear-gradient(to bottom, rgba(255,255,255,0.8) 0%,rgba(255,255,255,0.2) 100%); /* W3C */
+       text-shadow: 0 0 3px #fff;
+     }
+     h2 a.current {
+       font-weight: 800;
+     }
+    </style>
+  </head>
+  <body>
+    <div id=controls1>
+      <div class=control style="background-image:url(/icons/previous.png);" data-emit="previous"></div>
+      <div class=control style="background-image:url(/icons/play.png);" data-emit="play"></div>
+      <div class=control style="background-image:url(/icons/pause.png);" data-emit="pause"></div>
+      <div class=control style="background-image:url(/icons/next.png);" data-emit="next"></div>
+    </div>
+    <div id=svgclock>
+      <object data="/icons/german-clock.svg" style="width:200px ;height:200px; " type="image/svg+xml"></object>
+      <div id=clock></div>
+    </div>
+    <table width=100% height=100% id=tab>
+      <tr height=1><td width=10%></td><td width=20%></td><td width=20%></td><td width=20%></td><td width=20%></td><td width=10%></td></tr>
+      <tr id=titlebar style="background-color:rgba(255,200,0,0.9);"><td></td>
+        <td colspan=4 align=center height=40 style="" onclick="location.reload();">
+          ##################### &nbsp; <b> MPD Web Interface </b> (click to refresh) &nbsp; #####################
+        </td><td></td>
+      </tr>
+      
+      <tr height=20% class=nowplaying>
+        <td></td>
+        <td colspan=4 valign=top>
+          <div id="playpause">Now playing:</div>
+          <div id=nowplaying></div>
+        </td>
+        <td></td>
+      </tr>
+      
+      <tr height=6% class=progressevent><td colspan=6><div id=progress></div></td></tr>
+      
+      <tr><td></td>
+        <td valign=top colspan=2 style="padding-right: 5px;">
+          <h2><a href="#" class="current">Current Playlist</a></h2>
+          <div id=playlist></div>
+        </td>
+        <td valign=top colspan=2 style="padding-left: 5px;">
+          <h2><a href="#" class="current">All Playlists</a><a href="#">Artists</a></h2>
+        </td>
+        <td></td>
+      </tr>
+      
+      <tr style="background-color: rgba(0,0,0,0.5);color:white"><td></td><td colspan=4 align=center height=60>
+        
+        <div id=status></div>
+      </td><td></td></tr>
+    </table>
+  </body>
+</html>
+
+
+
+
