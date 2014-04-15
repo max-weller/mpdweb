@@ -19,6 +19,8 @@ var ALBUM_PREFIX = "Album: ";
 var TITLE_PREFIX = "Title: ";
 var TRACK_PREFIX = "Track: ";
 var FILE_PREFIX = "file: ";
+var PLAYLIST_PREFIX = "playlist: ";
+var DIRECTORY_PREFIX = "directory: ";
 var TIME_PREFIX = "Time: ";
 var ID_PREFIX = "Id: ";
 var POS_PREFIX = "Pos: ";
@@ -277,6 +279,12 @@ MPDConnection.prototype = {
         });
     },
     getSongsForAlbum: function(album, cb, errorcb) {
+        this.getSongsByPredicate("album", album, cb, errorcb);
+    },
+    getSongsForArtist: function(album, cb, errorcb) {
+        this.getSongsByPredicate("artist", album, cb, errorcb);
+    },
+    getSongsByPredicate: function(predType, predValue, cb, errorcb) {
         var processor = function(data) {
             var lines = this._lineSplit(data);
             var songs = [];
@@ -301,7 +309,7 @@ MPDConnection.prototype = {
             return songs;
         }.bind(this);
         this.queue.push({
-            cmd: "find album \""+album.replace(/"/g, "\\\"")+"\"",
+            cmd: "find "+predType+" \""+this._maskArgument(predValue)+"\"",
             process: processor,
             cb: cb,
             errorcb: errorcb,
@@ -310,12 +318,18 @@ MPDConnection.prototype = {
         });
     },
     getPlayListInfo: function(cb, errorcb) {
+        this.getSomeInfo("playlistinfo", cb, errorcb);
+    }, 
+    listDirectory: function(url, cb, errorcb) {
+        this.getSomeInfo("lsinfo \"" + this._maskArgument(url) + "\"", cb, errorcb);
+    }, 
+    getSomeInfo: function(whatinfo, cb, errorcb) {
         var processor = function(data) {
             var lines = this._lineSplit(data);
             var songs = [];
             var song;
             for (var i = 0; i < lines.length; i++) {
-                var line = lines[i];
+                var line = lines[i]; console.log(line);
                 if (line.indexOf(ARTIST_PREFIX) === 0) {
                     song.artist = line.substring(ARTIST_PREFIX.length);
                 } else if (line.indexOf(ALBUM_PREFIX) === 0) {
@@ -330,6 +344,14 @@ MPDConnection.prototype = {
                     song = {};
                     songs.push(song);
                     song.file = line.substring(FILE_PREFIX.length);
+                } else if (line.indexOf(PLAYLIST_PREFIX) === 0) {
+                    song = {};
+                    songs.push(song);
+                    song.playlist = line.substring(PLAYLIST_PREFIX.length);
+                } else if (line.indexOf(DIRECTORY_PREFIX) === 0) {
+                    song = {};
+                    songs.push(song);
+                    song.directory = line.substring(DIRECTORY_PREFIX.length);
                 } else if (line.indexOf(ID_PREFIX) === 0) {
                     song.id = parseInt(line.substring(ID_PREFIX.length));
                 } else if (line.indexOf(POS_PREFIX) === 0) {
@@ -339,7 +361,7 @@ MPDConnection.prototype = {
             return songs;
         }.bind(this);
         this.queue.push({
-            cmd: "playlistinfo",
+            cmd: whatinfo,
             process: processor,
             cb: cb,
             errorcb: errorcb,
@@ -414,6 +436,14 @@ MPDConnection.prototype = {
     addSongToPlayList: function(song, cb) {
         this.queue.push({
             cmd: "add \""+song+"\"",
+            cb: cb,
+            response: "",
+            state: INITIAL
+        });
+    },
+    addSongAtIndex: function(song, idx, cb) {
+        this.queue.push({
+            cmd: "addid \""+song+"\" "+idx,
             cb: cb,
             response: "",
             state: INITIAL
@@ -498,6 +528,9 @@ MPDConnection.prototype = {
         var seconds = time - minutes * 60;
         seconds = (seconds < 10 ? '0' : '') + seconds;
         return minutes+":"+seconds; 
+    },
+    _maskArgument: function(arg) {
+        return arg ? arg.replace(/"/g, "\\\"") : "";
     }
 };
 

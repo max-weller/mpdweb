@@ -32,23 +32,34 @@ var lstatus = null;
 
 setInterval(function() {
     mpd.getStatus(function(result) {
+        //if (!lstatus || lstatus.song != result.song) updatePlaylist();
         lstatus = result;
         io.sockets.emit('status', result);
     }, errCb);
 }, 1000);
+
+function updatePlaylist() {
+    mpd.getPlayListInfo(function(result) {
+        io.sockets.emit('playlist info' ,result);
+    }, errCb);
+}
 
 io.sockets.on('connection', function (socket) {
     socket.emit('news', { hello: 'world', refresh: randId });
     socket.on('my other event', function (data) {
         console.log(data);
     });
-    mpd.getPlayListInfo(function(result) {
-        io.sockets.emit('playlist info' ,result);
-    }, errCb);
+    updatePlaylist();
     socket.on('get artists', function(cb) {
         mpd.getAllArtists(function(result) {
             cb(result);
         }, errCb);
+    });
+    socket.on('find', function(predType, predValue, cb) {
+        mpd.getSongsByPredicate(predType, predValue, cb, errCb);
+    });
+    socket.on('ls', function(dir, cb) {
+        mpd.listDirectory(dir, cb, errCb);
     });
     socket.on('pause', function() {
         mpd.pause();
@@ -62,7 +73,12 @@ io.sockets.on('connection', function (socket) {
     socket.on('next', function() {
         mpd.next();
     });
-    
+    socket.on('setvolume', function(vol) {
+        mpd.setVolume(vol);
+    });
+    socket.on('insert song', function(song) {
+        mpd.addSongAtIndex(song, +lstatus.song+1, function(){ updatePlaylist(); });
+    });
     socket.on('seek', function(posf) {
         try {
             mpd.seek(lstatus.song, posf * lstatus.currentsong.time);
